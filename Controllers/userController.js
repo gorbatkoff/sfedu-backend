@@ -1,11 +1,26 @@
-const userModel = require("../Models/userModel");
+const crypto = require("crypto");
+const fs = require("fs");
 const bcrypt = require("bcrypt");
 const jwt = require("jsonwebtoken");
 const validator = require("validator");
+const userModel = require("../models/userModel");
+
+const privateKey = fs.readFileSync("private.pem", "utf8");
+
+const decryptData = (encryptedData) => {
+  return crypto
+    .privateDecrypt(
+      {
+        key: privateKey,
+        padding: crypto.constants.RSA_PKCS1_PADDING,
+      },
+      Buffer.from(encryptedData, "base64"),
+    )
+    .toString();
+};
 
 const createToken = (_id) => {
   const jwtKey = process.env.JWT_SECRET_KEY;
-
   return jwt.sign({ _id }, jwtKey, { expiresIn: "30d" });
 };
 
@@ -46,11 +61,20 @@ const loginUser = async (req, res) => {
   const { email, password } = req.body;
 
   try {
-    let user = await userModel.findOne({ email });
+    const decryptedEmail = decryptData(email);
+    const decryptedPassword = decryptData(password);
+
+    console.log("Decrypted Email:", decryptedEmail);
+    console.log("Decrypted Password:", decryptedPassword);
+
+    let user = await userModel.findOne({ email: decryptedEmail });
 
     if (!user) return res.status(400).json("Invalid email or password");
 
-    const isValidPassword = await bcrypt.compare(password, user.password);
+    const isValidPassword = await bcrypt.compare(
+      decryptedPassword,
+      user.password,
+    );
 
     if (!isValidPassword) {
       return res.status(400).json("Invalid email or password");
@@ -62,7 +86,7 @@ const loginUser = async (req, res) => {
       _id: user._id,
       name: user.name,
       surname: user.surname,
-      email,
+      email: decryptedEmail,
       token,
     });
   } catch (error) {
@@ -76,8 +100,6 @@ const findUser = async (req, res) => {
 
   try {
     let user = await userModel.findById(userId);
-
-    console.log(user);
 
     res.status(200).json(user);
   } catch (error) {
@@ -97,9 +119,15 @@ const getUsers = async (req, res) => {
   }
 };
 
+const getPublicKey = (req, res) => {
+  const publicKey = fs.readFileSync("public.pem", "utf8");
+  res.json({ publicKey });
+};
+
 module.exports = {
   registerUser,
   loginUser,
   findUser,
   getUsers,
+  getPublicKey,
 };

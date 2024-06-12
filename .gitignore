@@ -2,3 +2,6 @@
 .env
 
 .idea
+
+private.pem
+public.pem
